@@ -1,0 +1,403 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f5f5f5;
+  --foreground: #171717;
+  --primary: #1677ff;
+  --primary-hover: #4096ff;
+  --secondary: #52c41a;
+  --secondary-hover: #73d13d;
+  --success: #52c41a;
+  --warning: #faad14;
+  --error: #ff4d4f;
+  --border-radius: 6px;
+  --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --header-height: 64px;
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 80px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #141414;
+    --foreground: #f5f5f5;
+  }
+}
+
+/* Font Variables */
+:root {
+  --font-heading: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-body: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-ui: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* Layout Styles */
+.app-layout .ant-layout-sider {
+  transition: all 0.2s ease-in-out;
+}
+
+.app-layout .logo {
+  transition: all 0.2s ease-in-out;
+}
+
+.app-layout .ant-menu-item {
+  border-radius: 4px;
+  margin: 4px 8px;
+}
+
+.app-layout .ant-menu-submenu-title {
+  border-radius: 4px;
+  margin: 4px 8px;
+}
+
+.app-layout .ant-layout-header {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Typography Styles */
+h1, h2, h3, h4, h5, h6,
+.ant-typography h1, .ant-typography h2, .ant-typography h3, 
+.ant-typography h4, .ant-typography h5, .ant-typography h6,
+.ant-typography-h1, .ant-typography-h2, .ant-typography-h3,
+.ant-typography-h4, .ant-typography-h5, .ant-typography-h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.ant-typography-title, .ant-typography-title-1, .ant-typography-title-2,
+.ant-typography-title-3, .ant-typography-title-4, .ant-typography-title-5 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+.ant-typography p, p, .ant-typography-paragraph {
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+.ant-btn, .ant-input, .ant-select, .ant-dropdown-menu, 
+.ant-menu, .ant-tabs, .ant-tag, .ant-badge, .ant-alert,
+.ant-notification, .ant-message, .ant-modal-title,
+.ant-form-item-label > label, .ant-checkbox-wrapper,
+.ant-radio-wrapper, .ant-switch, .ant-pagination {
+  font-family: var(--font-ui);
+}
+
+code, pre, .ant-typography code, .ant-typography pre {
+  font-family: var(--font-mono);
+}
+
+/* Card Styles */
+.ant-card {
+  box-shadow: var(--card-shadow);
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ant-card-head {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-family: var(--font-heading);
+}
+
+/* Button Styles */
+.ant-btn {
+  border-radius: var(--border-radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: all 0.2s ease;
+}
+
+.ant-btn-primary {
+  background-color: var(--primary);
+}
+
+.ant-btn-primary:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.2);
+}
+
+.ant-btn-default:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.ant-btn-text:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.ant-btn-link {
+  font-family: var(--font-ui);
+}
+
+.ant-btn-sm {
+  font-size: 0.85rem;
+}
+
+.ant-btn-lg {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Table Styles */
+.ant-table {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  font-family: var(--font-body);
+}
+
+.ant-table-thead > tr > th {
+  background-color: rgba(0, 0, 0, 0.02);
+  font-weight: 600;
+  font-family: var(--font-ui);
+  letter-spacing: 0.01em;
+}
+
+.ant-table-cell {
+  font-family: var(--font-body);
+}
+
+/* Statistic Styles */
+.ant-statistic-title {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.ant-statistic-content {
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.ant-statistic-content-value {
+  letter-spacing: -0.02em;
+}
+
+/* Form Styles */
+.ant-form {
+  font-family: var(--font-ui);
+}
+
+.ant-form-item-label > label {
+  font-weight: 500;
+  font-family: var(--font-ui);
+}
+
+.ant-input, .ant-select-selector, .ant-picker {
+  border-radius: var(--border-radius);
+  font-family: var(--font-body);
+}
+
+.ant-select-dropdown {
+  font-family: var(--font-ui);
+}
+
+.ant-form-item-explain, .ant-form-item-extra {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+}
+
+.ant-form-item-required::before {
+  font-family: var(--font-ui);
+}
+
+.ant-checkbox + span, .ant-radio + span {
+  font-family: var(--font-body);
+}
+
+/* Dashboard Styles */
+.dashboard-stat-card {
+  transition: all 0.3s ease;
+}
+
+.dashboard-stat-card:hover {
+  transform: translateY(-5px);
+}
+
+.dashboard-header {
+  margin-bottom: 24px;
+}
+
+.dashboard-header .ant-typography {
+  font-family: var(--font-heading);
+}
+
+.dashboard-header h1 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.3em;
+}
+
+.dashboard-header p {
+  font-family: var(--font-ui);
+  font-size: 1.1rem;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 1.5em;
+}
+
+.section-header {
+  border-left: 4px solid var(--primary);
+  padding-left: 12px;
+  margin: 32px 0 16px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.chart-card, .table-card, .timeline-card {
+  height: 100%;
+  transition: all 0.3s ease;
+}
+
+.chart-card:hover, .table-card:hover, .timeline-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.ant-card-head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+}
+
+.ant-timeline {
+  font-family: var(--font-body);
+}
+
+.ant-timeline-item-content {
+  padding-bottom: 20px;
+}
+
+.ant-timeline strong {
+  font-family: var(--font-ui);
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .ant-card {
+    margin-bottom: 16px;
+  }
+  
+  .section-header {
+    margin: 24px 0 12px;
+  }
+}
+
+
+
+/* Table Level Styles - Modernized with softer colors */
+.ant-table-row.ant-table-row-level-1 {
+  background-color: rgba(215, 49, 165, 0.1);
+  border-left: 3px solid #d731a5;
+}
+.ant-table-row.ant-table-row-level-1:hover,
+.ant-table-row-level-1 .ant-table-cell-row-hover {
+  background-color: rgba(215, 49, 165, 0.2) !important;
+}
+
+.ant-table-row.ant-table-row-level-2 {
+  background-color: rgba(49, 165, 215, 0.1);
+  border-left: 3px solid #31a5d7;
+}
+.ant-table-row.ant-table-row-level-2:hover,
+.ant-table-row-level-2 .ant-table-cell-row-hover {
+  background-color: rgba(49, 165, 215, 0.2) !important;
+}
+
+.ant-table-row.ant-table-row-level-3 {
+  background-color: rgba(165, 215, 49, 0.1);
+  border-left: 3px solid #a5d731;
+}
+.ant-table-row.ant-table-row-level-3:hover,
+.ant-table-row-level-3 .ant-table-cell-row-hover {
+  background-color: rgba(165, 215, 49, 0.2) !important;
+}
+
+.ant-table-row.ant-table-row-level-4 {
+  background-color: rgba(215, 165, 49, 0.1);
+  border-left: 3px solid #d7a531;
+}
+.ant-table-row.ant-table-row-level-4:hover,
+.ant-table-row-level-4 .ant-table-cell-row-hover {
+  background-color: rgba(215, 165, 49, 0.2) !important;
+}
+
+.ant-table-row.ant-table-row-level-5 {
+  background-color: rgba(165, 49, 215, 0.1);
+  border-left: 3px solid #a531d7;
+}
+.ant-table-row.ant-table-row-level-5:hover,
+.ant-table-row-level-5 .ant-table-cell-row-hover {
+  background-color: rgba(165, 49, 215, 0.2) !important;
+}
+
+/* Special Row Styles */
+.row-slitted {
+  background-color: rgba(32, 28, 28, 0.9) !important;
+  color: white;
+  border-radius: 4px;
+} 
+.row-slitted:hover .ant-table-cell {
+  background-color: rgba(32, 28, 28, 0.95) !important;
+  color: white;
+} 
+
+/* Table Variant Styles */
+/* Red Table Style - for nested tables */
+.table-red > .ant-table-wrapper {
+  background-color: rgba(244, 67, 54, 0.05) !important;
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  border: 1px solid rgba(244, 67, 54, 0.1);
+}
+
+.table-red .ant-table-thead > tr > th {
+  background-color: rgba(244, 67, 54, 0.9) !important;
+  color: white !important;
+  border-bottom: none;
+}
+
+.table-red .ant-table-tbody > tr:hover > td {
+  background-color: rgba(244, 67, 54, 0.1) !important;
+}
+
+/* Blue Table Style - for outer tables */
+.table-blue > .ant-table-wrapper {
+  background-color: rgba(33, 150, 243, 0.05) !important;
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  border: 1px solid rgba(33, 150, 243, 0.1);
+}
+
+.table-blue .ant-table-thead > tr > th {
+  background-color: rgba(33, 150, 243, 0.9) !important;
+  color: white !important;
+  border-bottom: none;
+}
+
+.table-blue .ant-table-tbody > tr:hover > td {
+  background-color: rgba(33, 150, 243, 0.1) !important;
+}
