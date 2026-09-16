@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Card, Button, Modal, Form, Input, Tabs, Spin, Row, Col, message } from "antd";
+import { Card, Button, Modal, Form, Input, InputNumber, Tabs, Spin, Row, Col, message } from "antd";
 import { EditOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { apiClient } from "@/utils/apiClient";
 import { getCookieData } from "@/utils/common";
@@ -80,13 +80,31 @@ const EPage = () => {
 
   const handleAdd = () => {
     setEditingRecord(null);
+    masterForm.resetFields();
     setModalVisible(true);
   };
 
-  const handleEdit = (record: any) => {
+  const handleEdit = async (record: any) => {
     setEditingRecord(record);
-    masterForm.setFieldsValue({ name: record.label }); // Set form values dynamically
     setModalVisible(true);
+    if (activeTab === "GRADE") {
+      // Table1 (Grade dropdown) does carry DENSITY now, but not UOM - fetch
+      // the full record so the edit form has both.
+      try {
+        const response = await apiClient(`${API_BASE_URL}DtMGradeDtl?USER_SRNO=${USER_SRNO}&UT_SRNO=${UT_SRNO}&GRADE_SRNO=${record.value}`, "GET");
+        if (response.msgId === 200 && response.data?.Table?.[0]) {
+          const dtl = response.data.Table[0];
+          masterForm.setFieldsValue({ name: dtl.GRADE, DENSITY: dtl.DENSITY });
+        } else {
+          masterForm.setFieldsValue({ name: record.label, DENSITY: record.DENSITY });
+        }
+      } catch (error) {
+        console.error("Error fetching grade details:", error);
+        masterForm.setFieldsValue({ name: record.label, DENSITY: record.DENSITY });
+      }
+    } else {
+      masterForm.setFieldsValue({ name: record.label }); // Set form values dynamically
+    }
   };
 
 
@@ -117,9 +135,9 @@ const handleDelete = (record: any) => {
 };
 
 
-  const handleSubmit = async (values: { name: string }) => {
+  const handleSubmit = async (values: { name: string; DENSITY?: number }) => {
     if (!values.name) return;
-    const payload = {
+    const payload: any = {
       IU_FLAG: editingRecord ? "U" : "I",
       M_NAME : values.name,
       UOM : null,
@@ -127,6 +145,9 @@ const handleDelete = (record: any) => {
       UT_SRNO : UT_SRNO,
       PK_SRNO : editingRecord ? editingRecord.value : 0
     };
+    if (activeTab === "GRADE") {
+      payload.DENSITY = values.DENSITY ?? null;
+    }
 
     
     try {
@@ -199,6 +220,15 @@ const handleDelete = (record: any) => {
           <Form.Item name="name" label="Value" rules={[{ required: true, message: "Please enter a value!" }]}>
             <Input placeholder="Enter value" />
           </Form.Item>
+          {activeTab === "GRADE" && (
+            <Form.Item
+              name="DENSITY"
+              label="Density"
+              tooltip="Used in weight calculations: (OD - Thickness) x Thickness x (Length/1000) x Density. Defaults to 0.02485 for new grades if left blank."
+            >
+              <InputNumber style={{ width: '100%' }} step={0.0001} placeholder="e.g. 0.02485" />
+            </Form.Item>
+          )}
           <Form.Item>
             <Button type="primary" htmlType="submit">
               {editingRecord ? "Update" : "Add"}
