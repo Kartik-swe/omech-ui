@@ -21,6 +21,7 @@ const { Option } = Select;
 // ---------------------------------------------------------------------------
 
 type OptionType = { label: string; value: number };
+type GradeOptionType = OptionType & { DENSITY?: number };
 
 interface QuotationListRow {
   QUOTATION_SRNO: number;
@@ -57,12 +58,39 @@ interface ItemRow {
 
 const round2 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-// Same weight formula already used elsewhere in this app (IU_SCHEDULE) so
-// the auto-suggestion stays consistent with PO items - always editable after.
-const suggestWeight = (odVal: number | undefined, thickVal: number | undefined, lengthMm: number | undefined, qty: number | undefined) => {
+// Mirrors the database formula in IU_SCHEDULE / IU_PIPES_INV /
+// GET_INV_STATUS_SCHEDULE_WISE, now that those use a per-grade Density
+// (from M_GRADE.DENSITY) instead of a flat hardcoded constant. Passing the
+// selected line's grade density in keeps this single source of truth with
+// the SQL side - if a grade's density changes, this suggestion picks it up
+// automatically via the Grade dropdown options, no separate update needed.
+const suggestWeight = (
+  odVal: number | undefined,
+  thickVal: number | undefined,
+  lengthMm: number | undefined,
+  qty: number | undefined,
+  density: number | undefined
+) => {
   if (!odVal || !thickVal || !lengthMm || !qty) return undefined;
-  const perPiece = (odVal - thickVal) * thickVal * lengthMm * 0.00002485;
+  const effectiveDensity = density ?? 0.02485; // same fallback the SQL side uses
+  const perPiece = (odVal - thickVal) * thickVal * (lengthMm / 1000) * effectiveDensity;
   return round2(perPiece * qty);
+};
+
+// Rate/Metre is derived from Rate/Kg, not entered independently: it's the
+// per-kg rate multiplied by how many kg are in one metre of this specific
+// size - i.e. the same cross-sectional weight factor as suggestWeight
+// above, just without the length term (one metre = 1000mm -> (1000/1000) = 1).
+const suggestRatePerMeter = (
+  ratePerKg: number | undefined,
+  odVal: number | undefined,
+  thickVal: number | undefined,
+  density: number | undefined
+) => {
+  if (!ratePerKg || !odVal || !thickVal) return undefined;
+  const effectiveDensity = density ?? 0.02485;
+  const weightPerMeter = (odVal - thickVal) * thickVal * effectiveDensity;
+  return round2(ratePerKg * weightPerMeter);
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -83,7 +111,7 @@ const QuotationPage = () => {
   const [quotations, setQuotations] = useState<QuotationListRow[]>([]);
 
   const [optParty, setOptParty] = useState<OptionType[]>([]);
-  const [optGrades, setOptGrades] = useState<OptionType[]>([]);
+  const [optGrades, setOptGrades] = useState<GradeOptionType[]>([]);
   const [optOD, setOptOD] = useState<OptionType[]>([]);
   const [optThickness, setOptThickness] = useState<OptionType[]>([]);
 
@@ -219,18 +247,37 @@ const QuotationPage = () => {
       prev.map((it) => {
         if (it.key !== key) return it;
         const merged = { ...it, ...patch };
+        const odVal = optOD.find((o) => o.value === merged.OD_SRNO);
+        const thickVal = optThickness.find((t) => t.value === merged.THICKNESS_SRNO);
+        const gradeVal = optGrades.find((g) => g.value === merged.GRADE_SRNO);
+
         // Auto-suggest weight whenever the relevant fields are present - still editable after
-        if (!merged.IS_NOTE && ('OD_SRNO' in patch || 'THICKNESS_SRNO' in patch || 'LENGTH' in patch || 'QTY' in patch)) {
-          const odVal = optOD.find((o) => o.value === merged.OD_SRNO);
-          const thickVal = optThickness.find((t) => t.value === merged.THICKNESS_SRNO);
+        if (!merged.IS_NOTE && ('OD_SRNO' in patch || 'THICKNESS_SRNO' in patch || 'LENGTH' in patch || 'QTY' in patch || 'GRADE_SRNO' in patch)) {
           const suggested = suggestWeight(
             odVal ? Number(odVal.label) : undefined,
             thickVal ? Number(thickVal.label) : undefined,
             merged.LENGTH,
-            merged.QTY
+            merged.QTY,
+            gradeVal?.DENSITY
           );
           if (suggested !== undefined) merged.WEIGHT = suggested;
         }
+
+        // Auto-suggest Rate/Metre from Rate/Kg whenever the relevant fields
+        // change - still editable after, same pattern as weight above.
+        if (
+          !merged.IS_NOTE &&
+          ('RATE_PER_KG' in patch || 'OD_SRNO' in patch || 'THICKNESS_SRNO' in patch || 'GRADE_SRNO' in patch)
+        ) {
+          const suggestedRate = suggestRatePerMeter(
+            merged.RATE_PER_KG,
+            odVal ? Number(odVal.label) : undefined,
+            thickVal ? Number(thickVal.label) : undefined,
+            gradeVal?.DENSITY
+          );
+          if (suggestedRate !== undefined) merged.RATE_PER_METER = suggestedRate;
+        }
+
         return merged;
       })
     );
