@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import {
   SyncOutlined, ArrowUpOutlined, ArrowDownOutlined, TrophyOutlined,
-  FallOutlined, RiseOutlined, InfoCircleOutlined,
+  FallOutlined, RiseOutlined, InfoCircleOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -16,6 +16,7 @@ import {
 import { apiClient } from '@/utils/apiClient';
 import { getCookieData } from '@/utils/common';
 import ProtectedRoute from '@/app/components/ProtectedRoute';
+import { exportExcelPro, sortByDateDesc } from '@/utils/exportExcelPro';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -320,6 +321,74 @@ const PoAnalysisPage = () => {
   // Table column defs
   // -------------------------------------------------------------------------
 
+  // Export handlers - Dispatch Details and Size-wise Analysis
+  const handleExportDispatchDetails = async () => {
+    if (!dispatchDetails || dispatchDetails.length === 0) {
+      message.warning('No dispatch details to export.');
+      return;
+    }
+    try {
+      await exportExcelPro(
+        [
+          {
+            sheetName: 'Dispatch Details',
+            title: 'Omech - PO Analysis: Dispatch Details',
+            columns: [
+              { header: 'PO Number', key: 'PO_NUMBER' },
+              { header: 'PO Entry Date', key: 'PO_ENTRY_DATE' },
+              { header: 'Dispatch Date', key: 'DISPATCH_DATE' },
+              { header: 'DC No', key: 'DC_NO' },
+              { header: 'Customer', key: 'PARTY_NAME' },
+              {
+                header: 'Size (OD / Grade / Thickness)',
+                key: 'SIZE',
+                render: (r: any) => `${r.OD ?? '-'} / ${r.GRADE} / ${r.THICKNESS}`,
+              },
+              { header: 'Length', key: 'LENGTH', type: 'number' },
+              { header: 'Qty', key: 'DISPATCH_QTY', type: 'number' },
+              { header: 'Weight (kg)', key: 'DISPATCH_WEIGHT', type: 'number' },
+            ],
+            rows: sortByDateDesc(dispatchDetails, 'DISPATCH_DATE'),
+          },
+        ],
+        'PO_Analysis_Dispatch_Details',
+        `${periodLabel} - sorted by Dispatch Date, descending`
+      );
+    } catch (err) {
+      console.error('Export error:', err);
+      message.error('Failed to export Dispatch Details');
+    }
+  };
+
+  const handleExportSizeWise = async () => {
+    if (!sizeTotals || sizeTotals.length === 0) {
+      message.warning('No size-wise data to export.');
+      return;
+    }
+    try {
+      await exportExcelPro(
+        [
+          {
+            sheetName: 'Top Sizes',
+            title: 'Omech - PO Analysis: Top Sizes by Dispatched Quantity',
+            columns: [
+              { header: 'Size (OD / Grade / Thickness)', key: 'SIZE_KEY' },
+              { header: 'Dispatched Qty', key: 'QTY', type: 'number' },
+              { header: 'Dispatched Weight (kg)', key: 'WEIGHT', type: 'number' },
+              { header: 'No. of Dispatches', key: 'DISPATCH_COUNT', type: 'number' },
+            ],
+            rows: [...sizeTotals].sort((a, b) => b.WEIGHT - a.WEIGHT),
+          },
+        ],
+        'PO_Analysis_Size_Wise',
+        `${periodLabel} - lengths combined, sorted by dispatched weight descending`
+      );
+    } catch (err) {
+      console.error('Export error:', err);
+      message.error('Failed to export Size-wise Analysis');
+    }
+  };
+
   const sizeColumns = [
     { title: 'Size (OD / Grade / Thickness)', dataIndex: 'SIZE_KEY', key: 'SIZE_KEY' },
     { title: 'Dispatched Qty', dataIndex: 'QTY', key: 'QTY', render: (v: number) => round2(v), sorter: (a: any, b: any) => a.QTY - b.QTY },
@@ -566,7 +635,15 @@ const PoAnalysisPage = () => {
                   key: 'dispatchDetails',
                   label: 'Dispatch Details',
                   children: (
-                    <Card title={`Dispatch-level Detail (${periodLabel})`} size="small">
+                    <Card
+                      title={`Dispatch-level Detail (${periodLabel})`}
+                      size="small"
+                      extra={
+                        <Button icon={<FileExcelOutlined />} onClick={handleExportDispatchDetails} disabled={!dispatchDetails || dispatchDetails.length === 0}>
+                          Export to Excel
+                        </Button>
+                      }
+                    >
                       <Text type="secondary">
                         Every dispatch event, with PO Entry Date and Dispatch Date side by side, for tracing a specific PO or shipment.
                         Respects all filters above. Capped at the 1000 most recent matching rows.
@@ -587,7 +664,16 @@ const PoAnalysisPage = () => {
                   label: 'Size-wise Analysis',
                   children: (
                     <>
-                      <Card title="Top Sizes by Dispatched Quantity" size="small" style={{ marginBottom: 16 }}>
+                      <Card
+                        title="Top Sizes by Dispatched Quantity"
+                        size="small"
+                        style={{ marginBottom: 16 }}
+                        extra={
+                          <Button icon={<FileExcelOutlined />} onClick={handleExportSizeWise} disabled={!sizeTotals || sizeTotals.length === 0}>
+                            Export to Excel
+                          </Button>
+                        }
+                      >
                         <Text type="secondary">
                           Lengths are combined - grouped by OD / Grade / Thickness only. Respects the Customer filter and Date Range above.
                         </Text>

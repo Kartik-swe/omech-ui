@@ -64,6 +64,11 @@ const PoMaterialMapping = () => {
   const [selectedPo, setSelectedPo] = useState<PoItem | null>(null);
   const [groupedPoItems, setGroupedPoItems] = useState<GroupedPoItem[]>([]);
   const [groupedPoItemsLength, setGroupedPoItemsLength] = useState<GroupedPoItem[]>([]);
+  // "GRADE_SRNO-THICKNESS_SRNO-OD_SRNO" -> has matching material or not.
+  // Populated automatically whenever the grouped lists change, so rows can
+  // be highlighted without the user needing to click "Check Materials".
+  const [materialAvailability, setMaterialAvailability] = useState<Record<string, boolean>>({});
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   
   // States for raw inventory detail modal
@@ -93,6 +98,72 @@ const PoMaterialMapping = () => {
       setSelectedCoilTypeFlag(null);
     }
   }, [modalVisible]);
+
+  const comboKey = (g?: number, t?: number, o?: number) => `${g}-${t}-${o}`;
+
+  // Auto-highlight: whenever either grouped list changes, batch-check every
+  // distinct (Grade, Thickness, OD) combo in one call, so rows with no
+  // matching material are visibly flagged without clicking "Check Materials".
+  useEffect(() => {
+    const allRows = [...groupedPoItems, ...groupedPoItemsLength];
+    if (allRows.length === 0) {
+      setMaterialAvailability({});
+      return;
+    }
+
+    const seen = new Set<string>();
+    const combos: { GRADE_SRNO: number; THICKNESS_SRNO: number; OD_SRNO: number }[] = [];
+    allRows.forEach((r) => {
+      if (!r.GRADE_SRNO || !r.THICKNESS_SRNO || !r.OD_SRNO) return; // nothing to check without a size
+      const key = comboKey(r.GRADE_SRNO, r.THICKNESS_SRNO, r.OD_SRNO);
+      if (seen.has(key)) return;
+      seen.add(key);
+      combos.push({ GRADE_SRNO: r.GRADE_SRNO, THICKNESS_SRNO: r.THICKNESS_SRNO, OD_SRNO: r.OD_SRNO });
+    });
+
+    if (combos.length === 0) {
+      setMaterialAvailability({});
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setCheckingAvailability(true);
+      try {
+        const res = await apiClient(`${API_BASE_URL}CheckMaterialAvailabilityBatch`, 'POST', {
+          COMBOS: combos,
+          USER_SRNO,
+          UT_SRNO,
+        });
+        if (cancelled) return;
+        if (res.msgId === 200 && res.data?.Table) {
+          const map: Record<string, boolean> = {};
+          res.data.Table.forEach((row: any) => {
+            map[comboKey(row.GRADE_SRNO, row.THICKNESS_SRNO, row.OD_SRNO)] = !!row.HAS_MATERIAL;
+          });
+          setMaterialAvailability(map);
+        }
+      } catch (error) {
+        console.error('Error checking material availability:', error);
+        // Non-fatal - the page still works, rows just won't be highlighted
+      } finally {
+        if (!cancelled) setCheckingAvailability(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupedPoItems, groupedPoItemsLength]);
+
+  // A row is flagged only once we actually have a definitive "no" for its
+  // combo - unknown/unchecked rows are never highlighted, so nothing turns
+  // red before the check has actually run.
+  const rowHasNoMaterial = (record: GroupedPoItem) => {
+    const key = comboKey(record.GRADE_SRNO, record.THICKNESS_SRNO, record.OD_SRNO);
+    return key in materialAvailability && materialAvailability[key] === false;
+  };
 
 const fetchCommonData = async () => {
   try {
@@ -343,10 +414,24 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
 
   return (
     <div className="p-6">
+      <style jsx global>{`
+        .no-material-row td { background-color: #fff1f0 !important; }
+        .no-material-row:hover td { background-color: #ffccc7 !important; }
+      `}</style>
       <Card 
         title={
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span>PO Material Mapping</span>
+            {checkingAvailability && (
+              <Tag icon={<Spin size="small" />} color="processing">
+                Checking material availability...
+              </Tag>
+            )}
+            {!checkingAvailability && Object.keys(materialAvailability).length > 0 && (
+              <Tooltip title="Rows highlighted in red have no matching raw material or pipe stock right now - click 'Check Materials' on any row for the exact detail.">
+                <Tag color="red">Red rows = material not available</Tag>
+              </Tooltip>
+            )}
           </div>
         } 
         variant="borderless"
@@ -537,6 +622,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
             dataSource={groupedPoItems}
             rowKey={(record) => record.RowNum}
             loading={loading}
+            rowClassName={(record) => (rowHasNoMaterial(record) ? 'no-material-row' : '')}
             // pagination={{ pageSize: 10 }}
             scroll={{ x: 'max-content' }}
             footer={() => (
@@ -678,6 +764,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
             dataSource={groupedPoItemsLength}
             rowKey={(record) => record.RowNum}
             loading={loading}
+            rowClassName={(record) => (rowHasNoMaterial(record) ? 'no-material-row' : '')}
             // pagination={{ pageSize: 10 }}
             scroll={{ x: 'max-content' }}
             footer={() => (
