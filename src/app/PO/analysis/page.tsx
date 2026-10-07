@@ -138,6 +138,8 @@ const PoAnalysisPage = () => {
   const [poNumber, setPoNumber] = useState<string>('');
   const [debouncedPoNumber, setDebouncedPoNumber] = useState<string>('');
   const [dateRange, setDateRange] = useState<[any, any] | null>(null);
+  // '' = All item types; otherwise SCHEDULE_MASTER.ITEM_TYPE (PIPE / SHEET / COIL)
+  const [itemType, setItemType] = useState<string>('');
 
   const dateFrom: string | null = dateRange && dateRange[0] ? dateRange[0].format('YYYY-MM-DD') : null;
   const dateTo: string | null = dateRange && dateRange[1] ? dateRange[1].format('YYYY-MM-DD') : null;
@@ -215,6 +217,7 @@ const PoAnalysisPage = () => {
       if (dateFrom) params.append('DATE_FROM', dateFrom);
       if (dateTo) params.append('DATE_TO', dateTo);
       if (debouncedPoNumber) params.append('PO_NUMBER', debouncedPoNumber);
+      if (itemType) params.append('ITEM_TYPE', itemType);
 
       const res = await apiClient(`${API_BASE_URL}DtPoAnalysis?${params.toString()}`, 'GET');
 
@@ -260,7 +263,7 @@ const PoAnalysisPage = () => {
   useEffect(() => {
     fetchAnalysis();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partySrno, gradeSrno, odSrno, thicknessSrno, dateFrom, dateTo, debouncedPoNumber]);
+  }, [partySrno, gradeSrno, odSrno, thicknessSrno, dateFrom, dateTo, debouncedPoNumber, itemType]);
 
   // -------------------------------------------------------------------------
   // Presentational-only reshaping (no filtering/aggregation - that's all
@@ -475,6 +478,7 @@ const PoAnalysisPage = () => {
     setPoNumber('');
     setDebouncedPoNumber('');
     setDateRange(null);
+    setItemType('');
   };
 
   return (
@@ -491,7 +495,21 @@ const PoAnalysisPage = () => {
         >
           {/* Filters */}
           <Row gutter={16} style={{ marginBottom: 20 }}>
-            <Col span={4}>
+            <Col span={2}>
+              <Text strong>Item Type</Text>
+              <Select
+                style={{ width: '100%', marginTop: 4 }}
+                value={itemType}
+                onChange={setItemType}
+                options={[
+                  { label: 'All', value: '' },
+                  { label: 'Pipe', value: 'PIPE' },
+                  { label: 'Sheet', value: 'SHEET' },
+                  { label: 'Coil', value: 'COIL' },
+                ]}
+              />
+            </Col>
+            <Col span={3}>
               <Text strong>Customer</Text>
               <Select
                 allowClear
@@ -543,7 +561,7 @@ const PoAnalysisPage = () => {
                 filterOption={(input, option) => (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
               />
             </Col>
-            <Col span={4}>
+            <Col span={3}>
               <Text strong>PO Number</Text>
               <Input
                 placeholder="Search PO Number"

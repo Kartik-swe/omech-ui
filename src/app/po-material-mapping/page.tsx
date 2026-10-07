@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Card, Table, Button, Form, Select, Input, Space, Spin, Tabs, Tag, Tooltip, Typography, Empty, Modal, DatePicker, Row, Col, message, Checkbox, Statistic
 } from 'antd';
@@ -69,6 +69,10 @@ const PoMaterialMapping = () => {
   // be highlighted without the user needing to click "Check Materials".
   const [materialAvailability, setMaterialAvailability] = useState<Record<string, boolean>>({});
   const [checkingAvailability, setCheckingAvailability] = useState(false);
+  // Client-side Stock filter: 'ALL' shows every row, 'OUT' shows only the
+  // rows highlighted in red (no matching raw material / pipe stock). Kept
+  // outside the search form so it is never sent to DispPoAutoMap.
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'OUT'>('ALL');
 
   
   // States for raw inventory detail modal
@@ -164,6 +168,13 @@ const PoMaterialMapping = () => {
     const key = comboKey(record.GRADE_SRNO, record.THICKNESS_SRNO, record.OD_SRNO);
     return key in materialAvailability && materialAvailability[key] === false;
   };
+
+  // Rows actually shown in the table, summary cards and distribution footer.
+  const displayedPoItems = useMemo(
+    () => (stockFilter === 'OUT' ? groupedPoItems.filter(rowHasNoMaterial) : groupedPoItems),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [groupedPoItems, materialAvailability, stockFilter]
+  );
 
 const fetchCommonData = async () => {
   try {
@@ -521,9 +532,21 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
                 <Input placeholder="PO Number" />
               </Form.Item>
             </Col>
-            <Col span={5}>
+            <Col span={4}>
               <Form.Item label="PO Entry Date" name="ENTRY_DATE">
                 <DatePicker.RangePicker />
+              </Form.Item>
+            </Col>
+            <Col span={2}>
+              <Form.Item label="Stock">
+                <Select
+                  value={stockFilter}
+                  onChange={setStockFilter}
+                  options={[
+                    { label: 'All', value: 'ALL' },
+                    { label: 'Out of Stock', value: 'OUT' },
+                  ]}
+                />
               </Form.Item>
             </Col>
            
@@ -554,6 +577,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
                     // Reset form fields
                     searchForm.resetFields();
                     searchForm.setFieldsValue({ ITEM_TYPE: 'PIPE' });
+                    setStockFilter('ALL');
                     
                     // Clear all data
                     setGroupedPoItems([]);
@@ -574,34 +598,34 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
         </Form>
         
         {/* Summary Section */}
-        {groupedPoItems.length > 0 && (
+        {displayedPoItems.length > 0 && (
           <Card style={{ marginBottom: 16 }} bordered={false}>
             <Row gutter={16}>
               <Col span={6}>
                 <Statistic 
                   title="Total PO Items" 
-                  value={groupedPoItems.length} 
+                  value={displayedPoItems.length} 
                   prefix={<InfoCircleOutlined />} 
                 />
               </Col>
               <Col span={6}>
                 <Statistic 
                   title="Total Pipe Quantity" 
-                  value={groupedPoItems.reduce((sum, item) => sum + (item.PIPE_QTY || 0), 0)} 
+                  value={displayedPoItems.reduce((sum, item) => sum + (item.PIPE_QTY || 0), 0)} 
                   prefix={<InfoCircleOutlined />} 
                 />
               </Col>
               <Col span={6}>
                 <Statistic 
                   title="Total Pending Weight (kg)" 
-                  value={groupedPoItems.reduce((sum, item) => sum + (item.COIL_SHEET_WEIGHT || 0), 0).toFixed(2)} 
+                  value={displayedPoItems.reduce((sum, item) => sum + (item.COIL_SHEET_WEIGHT || 0), 0).toFixed(2)} 
                   prefix={<InfoCircleOutlined />} 
                 />
               </Col>
               <Col span={6}>
                 <Statistic 
                   title="Unique Grades" 
-                  value={new Set(groupedPoItems.map(item => item.GRADE)).size} 
+                  value={new Set(displayedPoItems.map(item => item.GRADE)).size} 
                   prefix={<InfoCircleOutlined />} 
                 />
               </Col>
@@ -614,14 +638,21 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
           <Table
           title={() => (
              <div>
-                <Title level={4}>POs Items</Title>
+                <Title level={4}>
+                  POs Items
+                  {stockFilter === 'OUT' && (
+                    <Tag color="red" style={{ marginLeft: 8, verticalAlign: 'middle' }}>
+                      Out of Stock only: {displayedPoItems.length} of {groupedPoItems.length}
+                    </Tag>
+                  )}
+                </Title>
                 {/* {JSON.stringify(groupedPoItems)} */}
               </div>
             )}
             columns={groupedPoColumns}
-            dataSource={groupedPoItems}
+            dataSource={displayedPoItems}
             rowKey={(record) => record.RowNum}
-            loading={loading}
+            loading={loading || (stockFilter === 'OUT' && checkingAvailability)}
             rowClassName={(record) => (rowHasNoMaterial(record) ? 'no-material-row' : '')}
             // pagination={{ pageSize: 10 }}
             scroll={{ x: 'max-content' }}
@@ -630,7 +661,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
                 <Row gutter={16}>
                   <Col span={8}>
                     <Text strong>Grade Distribution: </Text>
-                    {Array.from(new Set(groupedPoItems.map(item => item.GRADE)))
+                    {Array.from(new Set(displayedPoItems.map(item => item.GRADE)))
                       .sort((a, b) => a.localeCompare(b))
                       .map(grade => (
                         <Tag color="blue" key={grade}>{grade}</Tag>
@@ -638,7 +669,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
                   </Col>
                   <Col span={8}>
                     <Text strong>Thickness Distribution: </Text>
-                    {Array.from(new Set(groupedPoItems.map(item => item.THICKNESS)))
+                    {Array.from(new Set(displayedPoItems.map(item => item.THICKNESS)))
                       .sort((a, b) => parseFloat(a) - parseFloat(b))
                       .map(thickness => (
                         <Tag color="green" key={thickness}>{thickness}</Tag>
@@ -646,7 +677,7 @@ const handleLengthDetail = async (record: GroupedPoItem) => {
                   </Col>
                   <Col span={8}>
                     <Text strong>OD Distribution: </Text>
-                    {Array.from(new Set(groupedPoItems.map(item => item.OD).filter(Boolean)))
+                    {Array.from(new Set(displayedPoItems.map(item => item.OD).filter(Boolean)))
                       .sort((a:any, b:any) => parseFloat(a) - parseFloat(b))
                       .map(od => (
                         <Tag color="purple" key={od}>{od}</Tag>
