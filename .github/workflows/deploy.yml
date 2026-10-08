@@ -1,0 +1,137 @@
+# Build on every PR; build + deploy to the DigitalOcean droplet when a PR is
+# merged into main (or when run manually from the Actions tab).
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions -> Secrets):
+#   DROPLET_HOST     droplet IP / hostname
+#   DROPLET_USER     SSH user (must be able to run docker)
+#   DROPLET_SSH_KEY  private key whose public key is in that user's authorized_keys
+# Optional secret:
+#   DROPLET_KNOWN_HOSTS  output of `ssh-keyscan <host>` (pins the host key)
+#
+# Build-time values (Settings -> Secrets and variables -> Actions -> Variables).
+# NEXT_PUBLIC_* values are baked into the bundle at build time; defaults below
+# match the current droplet .env.local.
+#   NEXT_PUBLIC_API_BASE_URL      default https://omechinventory.com/api/
+#   NEXT_PUBLIC_AUTH_EXPIRY_TIME  default 660
+
+name: UI - build & deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+env:
+  REMOTE_ROOT: /omech
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://omechinventory.com/api/' }}
+      NEXT_PUBLIC_AUTH_EXPIRY_TIME: ${{ vars.NEXT_PUBLIC_AUTH_EXPIRY_TIME || '660' }}
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same major version as the runtime image (frontend/Dockerfile: node:18-alpine)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx next build
+
+      - name: Package
+        if: github.event_name != 'pull_request'
+        run: tar -czf frontend.tar.gz --exclude=.next/cache .next public package.json package-lock.json
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: frontend
+          path: frontend.tar.gz
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DROPLET_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts; fi
+
+      - name: Upload build
+        run: |
+          scp -i ~/.ssh/id_deploy frontend.tar.gz \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/tmp/frontend-${{ github.sha }}.tar.gz"
+
+      - name: Deploy on droplet
+        run: |
+          ssh -i ~/.ssh/id_deploy "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
+            "ROOT='${{ env.REMOTE_ROOT }}' SHA='${{ github.sha }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$ROOT"
+          DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
+          PKG="/tmp/frontend-$SHA.tar.gz"
+          NEW="$ROOT/releases/frontend-$SHA"
+          FE="$ROOT/frontend"
+
+          # 1) Unpack new build
+          rm -rf "$NEW" && mkdir -p "$NEW" && tar -xzf "$PKG" -C "$NEW" && rm -f "$PKG"
+
+          # 2) Keep the current build for rollback (only what we replace)
+          rm -rf "$ROOT/frontend.prev" && mkdir -p "$ROOT/frontend.prev"
+          for f in .next public package.json package-lock.json; do
+            [ -e "$FE/$f" ] && cp -a "$FE/$f" "$ROOT/frontend.prev/"
+          done
+
+          # 3) Swap in. Only build outputs are touched - Dockerfile, .env.local
+          #    and everything else in $FE is left as-is.
+          rm -rf "$FE/.next" "$FE/public"
+          cp -a "$NEW/.next" "$NEW/public" "$NEW/package.json" "$NEW/package-lock.json" "$FE/"
+
+          # 4) Rebuild + restart only the frontend container
+          $DC up -d --build --no-deps frontend
+
+          # 5) Health check from inside the container
+          ok=0
+          for i in $(seq 1 20); do
+            if docker exec frontend wget -q -O /dev/null http://127.0.0.1:3000/ 2>/dev/null; then ok=1; break; fi
+            sleep 3
+          done
+
+          if [ "$ok" != 1 ]; then
+            echo "ERROR: frontend did not come up - rolling back"
+            docker logs --tail 50 frontend || true
+            rm -rf "$FE/.next" "$FE/public"
+            cp -a "$ROOT/frontend.prev/." "$FE/"
+            $DC up -d --build --no-deps frontend
+            exit 1
+          fi
+
+          ls -1dt "$ROOT"/releases/frontend-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+          docker image prune -f >/dev/null || true
+          echo "Frontend deployed: $SHA"
+          REMOTE
