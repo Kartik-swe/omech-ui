@@ -87,10 +87,17 @@ jobs:
           scp -i ~/.ssh/id_deploy frontend.tar.gz \
             "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/tmp/frontend-${{ github.sha }}.tar.gz"
 
+      # The deploy script runs DETACHED on the droplet (nohup/setsid), so a
+      # dropped SSH connection (e.g. during a long silent `npm install` in the
+      # image build) can't kill it half-way. GitHub just polls its log + exit
+      # status over short SSH calls.
       - name: Deploy on droplet
+        env:
+          TARGET: ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}
+          ROOT: ${{ env.REMOTE_ROOT }}
+          SHA: ${{ github.sha }}
         run: |
-          ssh -i ~/.ssh/id_deploy "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}" \
-            "ROOT='${{ env.REMOTE_ROOT }}' SHA='${{ github.sha }}' bash -s" <<'REMOTE'
+          cat > remote-body.sh <<'REMOTE'
           set -euo pipefail
           cd "$ROOT"
           DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
@@ -135,3 +142,32 @@ jobs:
           docker image prune -f >/dev/null || true
           echo "Frontend deployed: $SHA"
           REMOTE
+          {
+            printf 'ROOT=%q\n' "$ROOT"
+            printf 'SHA=%q\n' "$SHA"
+            cat remote-body.sh
+          } > "deploy-frontend-$SHA.sh"
+
+          SSHO=(-i ~/.ssh/id_deploy -o ServerAliveInterval=15 -o ServerAliveCountMax=8 -o ConnectTimeout=20)
+          RUN="/tmp/deploy-frontend-$SHA"
+          scp "${SSHO[@]}" "deploy-frontend-$SHA.sh" "$TARGET:$RUN.sh"
+          ssh "${SSHO[@]}" "$TARGET" "rm -f $RUN.status $RUN.log; nohup setsid bash -c 'bash $RUN.sh > $RUN.log 2>&1; echo \$? > $RUN.status' > /dev/null 2>&1 < /dev/null &"
+          echo "Deploy started on droplet; following $RUN.log"
+
+          shown=0; status=""
+          for i in $(seq 1 120); do            # up to 20 minutes
+            sleep 10
+            total=$(ssh "${SSHO[@]}" "$TARGET" "wc -l < $RUN.log 2>/dev/null || echo 0" 2>/dev/null) || continue
+            total=${total//[^0-9]/}; total=${total:-0}
+            if [ "$total" -gt "$shown" ]; then
+              ssh "${SSHO[@]}" "$TARGET" "sed -n '$((shown+1)),${total}p' $RUN.log" && shown=$total
+            fi
+            status=$(ssh "${SSHO[@]}" "$TARGET" "cat $RUN.status 2>/dev/null" 2>/dev/null || true)
+            status=${status//[^0-9]/}
+            [ -n "$status" ] && break
+          done
+
+          ssh "${SSHO[@]}" "$TARGET" "sed -n '$((shown+1)),\$p' $RUN.log" || true
+          if [ -z "$status" ]; then echo "::error::Timed out waiting for the deploy to finish - check $RUN.log on the droplet"; exit 1; fi
+          ssh "${SSHO[@]}" "$TARGET" "rm -f $RUN.sh $RUN.status" || true
+          exit "$status"
