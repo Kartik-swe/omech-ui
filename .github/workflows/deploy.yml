@@ -1,6 +1,12 @@
 # Build on every PR; build + deploy to the DigitalOcean droplet when a PR is
 # merged into main (or when run manually from the Actions tab).
 #
+# HOW IT DEPLOYS (since 2026-10-08): GitHub builds the COMPLETE frontend Docker
+# image (deploy/frontend.Dockerfile, incl. npm install) and ships it to the
+# droplet. The droplet only `docker load`s it and restarts the frontend
+# container - it never runs npm install or builds anything (that froze the
+# 1 CPU / 2 GB droplet on 2026-10-08).
+#
 # Required repo secrets (Settings -> Secrets and variables -> Actions -> Secrets):
 #   DROPLET_HOST     droplet IP / hostname
 #   DROPLET_USER     SSH user (must be able to run docker)
@@ -9,9 +15,8 @@
 #   DROPLET_KNOWN_HOSTS  output of `ssh-keyscan <host>` (pins the host key)
 #
 # Build-time values (Settings -> Secrets and variables -> Actions -> Variables).
-# NEXT_PUBLIC_* values are baked into the bundle at build time; defaults below
-# match the current droplet .env.local.
-#   NEXT_PUBLIC_API_BASE_URL      default https://omechinventory.com/api/
+# NEXT_PUBLIC_* values are baked into the bundle at build time.
+#   NEXT_PUBLIC_API_BASE_URL      default https://omechinventory.com/api/  (must be https://)
 #   NEXT_PUBLIC_AUTH_EXPIRY_TIME  default 660
 
 name: UI - build & deploy
@@ -29,6 +34,7 @@ concurrency:
 
 env:
   REMOTE_ROOT: /omech
+  MIN_FREE_MB: 300   # deploy refuses to start if the droplet has less free memory
 
 jobs:
   build:
@@ -40,7 +46,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same major version as the runtime image (frontend/Dockerfile: node:18-alpine)
+      - name: Show + check build settings
+        run: |
+          echo "API base URL baked into this build: $NEXT_PUBLIC_API_BASE_URL"
+          echo "Auth expiry: $NEXT_PUBLIC_AUTH_EXPIRY_TIME"
+          case "$NEXT_PUBLIC_API_BASE_URL" in
+            https://*/) ;;
+            *) echo "::error::NEXT_PUBLIC_API_BASE_URL must start with https:// and end with / (got '$NEXT_PUBLIC_API_BASE_URL')"; exit 1 ;;
+          esac
+
+      # Same major version as the runtime image (node:18-alpine)
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
@@ -50,16 +65,23 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx next build
 
-      - name: Package
+      - name: Build runtime image
         if: github.event_name != 'pull_request'
-        run: tar -czf frontend.tar.gz --exclude=.next/cache .next public package.json package-lock.json
+        run: |
+          mkdir -p image
+          cp -a .next public package.json package-lock.json image/
+          rm -rf image/.next/cache
+          docker build -f deploy/frontend.Dockerfile -t omech-frontend:ci image
+          docker save omech-frontend:ci | gzip -1 > frontend-image.tar.gz
+          ls -lh frontend-image.tar.gz
 
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
-          name: frontend
-          path: frontend.tar.gz
+          name: frontend-image
+          path: frontend-image.tar.gz
           retention-days: 7
+          compression-level: 0
 
   deploy:
     needs: build
@@ -69,7 +91,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: frontend
+          name: frontend-image
 
       - name: Set up SSH
         env:
@@ -82,8 +104,7 @@ jobs:
           if [ -n "$KNOWN_HOSTS" ]; then
             printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           else
-            # Fetch only the ed25519 host key, with retries - a busy droplet
-            # can make a plain ssh-keyscan time out and fail the whole job.
+            # Fetch only the ed25519 host key, with retries.
             for i in 1 2 3 4 5; do
               ssh-keyscan -T 30 -t ed25519 -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null || true
               [ -s ~/.ssh/known_hosts ] && break
@@ -92,15 +113,24 @@ jobs:
             [ -s ~/.ssh/known_hosts ] || { echo "::error::Could not read the droplet's SSH host key"; exit 1; }
           fi
 
-      - name: Upload build
+      - name: Check droplet has free memory
+        env:
+          TARGET: ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}
         run: |
-          scp -i ~/.ssh/id_deploy frontend.tar.gz \
-            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/tmp/frontend-${{ github.sha }}.tar.gz"
+          free_mb=$(ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 "$TARGET" "awk '/MemAvailable/ {print int(\$2/1024)}' /proc/meminfo")
+          echo "Droplet free memory: ${free_mb} MB (minimum ${MIN_FREE_MB} MB)"
+          if [ "${free_mb:-0}" -lt "$MIN_FREE_MB" ]; then
+            echo "::error::Droplet is low on memory (${free_mb} MB free) - not deploying. Nothing was changed."
+            exit 1
+          fi
 
-      # The deploy script runs DETACHED on the droplet (nohup/setsid), so a
-      # dropped SSH connection (e.g. during a long silent `npm install` in the
-      # image build) can't kill it half-way. GitHub just polls its log + exit
-      # status over short SSH calls.
+      - name: Upload image
+        run: |
+          scp -i ~/.ssh/id_deploy -o ServerAliveInterval=15 frontend-image.tar.gz \
+            "${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}:/tmp/frontend-image-${{ github.sha }}.tar.gz"
+
+      # Runs DETACHED on the droplet (nohup/setsid) so a dropped SSH connection
+      # can't kill it half-way; GitHub polls its log + exit status.
       - name: Deploy on droplet
         env:
           TARGET: ${{ secrets.DROPLET_USER }}@${{ secrets.DROPLET_HOST }}
@@ -111,44 +141,44 @@ jobs:
           set -euo pipefail
           cd "$ROOT"
           DC="docker compose"; $DC version >/dev/null 2>&1 || DC="docker-compose"
-          PKG="/tmp/frontend-$SHA.tar.gz"
-          NEW="$ROOT/releases/frontend-$SHA"
-          FE="$ROOT/frontend"
+          PKG="/tmp/frontend-image-$SHA.tar.gz"
 
-          # 1) Unpack new build
-          rm -rf "$NEW" && mkdir -p "$NEW" && tar -xzf "$PKG" -C "$NEW" && rm -f "$PKG"
+          # Image name docker compose uses for the frontend service (e.g. omech-frontend)
+          IMG=$(docker inspect frontend --format '{{.Config.Image}}' 2>/dev/null || true)
+          [ -n "$IMG" ] || IMG="omech-frontend"
+          case "$IMG" in *:*) ;; *) IMG="$IMG:latest" ;; esac
+          BASE="${IMG%:*}"
+          echo "Frontend image: $IMG"
 
-          # 2) Keep the current build for rollback (only what we replace)
-          rm -rf "$ROOT/frontend.prev" && mkdir -p "$ROOT/frontend.prev"
-          for f in .next public package.json package-lock.json; do
-            [ -e "$FE/$f" ] && cp -a "$FE/$f" "$ROOT/frontend.prev/"
-          done
+          # 1) Keep the current image for rollback
+          docker image inspect "$IMG" >/dev/null 2>&1 && docker tag "$IMG" "$BASE:prev" && echo "Saved current image as $BASE:prev"
 
-          # 3) Swap in. Only build outputs are touched - Dockerfile, .env.local
-          #    and everything else in $FE is left as-is.
-          rm -rf "$FE/.next" "$FE/public"
-          cp -a "$NEW/.next" "$NEW/public" "$NEW/package.json" "$NEW/package-lock.json" "$FE/"
+          # 2) Load the image GitHub built (no npm install / build here)
+          gunzip -c "$PKG" | docker load
+          rm -f "$PKG"
+          docker tag omech-frontend:ci "$IMG"
 
-          # 4) Rebuild + restart only the frontend container
-          $DC up -d --build --no-deps frontend
+          # 3) Restart ONLY the frontend container, without building anything
+          $DC up -d --no-build --no-deps frontend
 
-          # 5) Health check from inside the container
+          # 4) Health check from inside the container
           ok=0
-          for i in $(seq 1 20); do
+          for i in $(seq 1 30); do
             if docker exec frontend wget -q -O /dev/null http://127.0.0.1:3000/ 2>/dev/null; then ok=1; break; fi
             sleep 3
           done
 
           if [ "$ok" != 1 ]; then
-            echo "ERROR: frontend did not come up - rolling back"
+            echo "ERROR: frontend did not come up - rolling back to the previous image"
             docker logs --tail 50 frontend || true
-            rm -rf "$FE/.next" "$FE/public"
-            cp -a "$ROOT/frontend.prev/." "$FE/"
-            $DC up -d --build --no-deps frontend
+            if docker image inspect "$BASE:prev" >/dev/null 2>&1; then
+              docker tag "$BASE:prev" "$IMG"
+              $DC up -d --no-build --no-deps frontend
+            fi
             exit 1
           fi
 
-          ls -1dt "$ROOT"/releases/frontend-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+          docker rmi omech-frontend:ci >/dev/null 2>&1 || true
           docker image prune -f >/dev/null || true
           echo "Frontend deployed: $SHA"
           REMOTE
@@ -165,7 +195,7 @@ jobs:
           echo "Deploy started on droplet; following $RUN.log"
 
           shown=0; status=""
-          for i in $(seq 1 120); do            # up to 20 minutes
+          for i in $(seq 1 90); do            # up to 15 minutes
             sleep 10
             total=$(ssh "${SSHO[@]}" "$TARGET" "wc -l < $RUN.log 2>/dev/null || echo 0" 2>/dev/null) || continue
             total=${total//[^0-9]/}; total=${total:-0}
