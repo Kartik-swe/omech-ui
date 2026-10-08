@@ -79,8 +79,18 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          if [ -n "$KNOWN_HOSTS" ]; then printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts; fi
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            # Fetch only the ed25519 host key, with retries - a busy droplet
+            # can make a plain ssh-keyscan time out and fail the whole job.
+            for i in 1 2 3 4 5; do
+              ssh-keyscan -T 30 -t ed25519 -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null || true
+              [ -s ~/.ssh/known_hosts ] && break
+              echo "Host key lookup attempt $i failed - retrying in 15s"; sleep 15
+            done
+            [ -s ~/.ssh/known_hosts ] || { echo "::error::Could not read the droplet's SSH host key"; exit 1; }
+          fi
 
       - name: Upload build
         run: |
