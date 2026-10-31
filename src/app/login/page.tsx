@@ -1,8 +1,8 @@
 "use client";
 import Cookies from "js-cookie"; // Import js-cookie
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Form, Input, Button, message, Card, Spin } from "antd";
+import { Form, Input, Button, message, Card } from "antd";
 import DeviceAccessPanel from "../components/DeviceAccessPanel";
 import { DeviceStatusInfo, deviceHeaders, fetchDeviceStatus } from "@/utils/device";
 
@@ -12,20 +12,18 @@ const LoginPage = () => {
 // state for handle Error msg
   const [errMsg, setErrMsg] = useState('');
 
-  // Device registration: only matters outside the allowed office IPs.
-  // null = normal login (allowed IP, approved device, or status check failed).
+  // Device registration. Nothing is called on page load: the device screen is
+  // shown ONLY after a login attempt is refused with "Access denied" (outside
+  // the allowed IPs and not an approved device). Office PCs never see it.
   const [deviceGate, setDeviceGate] = useState<DeviceStatusInfo | null>(null);
-  const [checkingDevice, setCheckingDevice] = useState(true);
+  const [lastUsername, setLastUsername] = useState("");
 
   const checkDevice = async () => {
     const st = await fetchDeviceStatus();
-    setDeviceGate(st && !st.IP_ALLOWED && st.DEVICE_STATUS !== "APPROVED" ? st : null);
-    setCheckingDevice(false);
+    const gate = st && !st.IP_ALLOWED && st.DEVICE_STATUS !== "APPROVED" ? st : null;
+    setDeviceGate(gate);
+    return { st, gate };
   };
-
-  useEffect(() => {
-    checkDevice();
-  }, []);
 
 
   const onFinish = async (values: { username: string; password: string }) => {
@@ -40,6 +38,25 @@ const LoginPage = () => {
         },
         body: JSON.stringify(values),
       });
+
+      // Refused by the IP / device check (plain-text reply, not JSON)
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        if (text.startsWith("Access denied")) {
+          setLastUsername(values.username);
+          const { st, gate } = await checkDevice();
+          if (!gate) {
+            const msg = st?.DEVICE_STATUS === "APPROVED"
+              ? "This device was just approved. Please try again in a minute."
+              : "Access denied from this network. Please contact your admin.";
+            setErrMsg(msg);
+            message.error(msg);
+          }
+          return;
+        }
+        throw new Error(text);
+      }
 
       const data = await response.json();
 
@@ -66,13 +83,18 @@ const LoginPage = () => {
     }
   };
 
-  if (checkingDevice || deviceGate) {
+  if (deviceGate) {
     return (
       <div
         className="absolute top-0 left-0 w-full h-full flex justify-center items-center bg-gray-100 px-4"
         style={{ zIndex: 9999 }}
       >
-        {checkingDevice ? <Spin size="large" /> : <DeviceAccessPanel status={deviceGate!} onRecheck={checkDevice} />}
+        <DeviceAccessPanel
+          status={deviceGate}
+          initialUsername={lastUsername}
+          onRecheck={async () => { await checkDevice(); }}
+          onBack={() => setDeviceGate(null)}
+        />
       </div>
     );
   }

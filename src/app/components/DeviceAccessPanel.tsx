@@ -11,6 +11,10 @@ interface Props {
   status: DeviceStatusInfo;
   /** Re-check status with the server (e.g. after an admin approved this device). */
   onRecheck: () => Promise<void> | void;
+  /** Username typed on the login form, to pre-fill the request. */
+  initialUsername?: string;
+  /** Go back to the normal login form. */
+  onBack?: () => void;
 }
 
 const reasonText: Record<string, string> = {
@@ -24,7 +28,7 @@ const reasonText: Record<string, string> = {
  * Shown on the login page when the browser is NOT on an allowed IP and has no
  * approved device. Offices on allowed IPs never see this.
  */
-const DeviceAccessPanel = ({ status, onRecheck }: Props) => {
+const DeviceAccessPanel = ({ status, onRecheck, initialUsername, onBack }: Props) => {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -65,9 +69,12 @@ const DeviceAccessPanel = ({ status, onRecheck }: Props) => {
             </>
           }
           extra={
-            <Button type="primary" icon={<ReloadOutlined />} loading={checking} onClick={recheck}>
-              Check again
-            </Button>
+            <>
+              <Button type="primary" icon={<ReloadOutlined />} loading={checking} onClick={recheck}>
+                Check again
+              </Button>
+              {onBack && <Button type="link" onClick={onBack}>Back to login</Button>}
+            </>
           }
         />
       </Card>
@@ -85,7 +92,7 @@ const DeviceAccessPanel = ({ status, onRecheck }: Props) => {
         form={form}
         layout="vertical"
         onFinish={onFinish}
-        initialValues={{ deviceName: suggestDeviceName() }}
+        initialValues={{ username: initialUsername || '', deviceName: suggestDeviceName() }}
       >
         <Form.Item label="Username" name="username" rules={[{ required: true, message: 'Please enter your username' }]}>
           <Input autoComplete="username" />
@@ -117,6 +124,11 @@ const DeviceAccessPanel = ({ status, onRecheck }: Props) => {
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
         Each user can register up to 2 devices. Clearing browser data or switching browser means registering again.
       </Paragraph>
+      {onBack && (
+        <Button type="link" onClick={onBack} style={{ paddingLeft: 0 }}>
+          Back to login
+        </Button>
+      )}
     </Card>
   );
 };
