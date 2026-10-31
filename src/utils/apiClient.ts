@@ -1,5 +1,6 @@
 import { message } from 'antd';
 import Cookies from 'js-cookie';
+import { deviceHeaders, getDeviceKey } from './device';
 export interface ApiResponse<T = any> {
     msgId: number;
     msg: string;
@@ -39,6 +40,7 @@ export interface ApiResponse<T = any> {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}), // Add token if available
+          ...deviceHeaders(), // registered phones only; office browsers send nothing extra
           ...headers,
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -68,6 +70,19 @@ export interface ApiResponse<T = any> {
         throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
       }
   
+      // A registered phone whose approval has expired / been revoked gets the
+      // plain-text "Access denied" reply: send it to /login, which explains
+      // what happened and lets the user request access again.
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json') && getDeviceKey()) {
+        const text = await response.text();
+        if (text.startsWith('Access denied')) {
+          handleLogout();
+          return { msgId: -1, msg: 'This device no longer has access. Please check with your admin.' };
+        }
+        throw new Error(text || `Unexpected response (${response.status})`);
+      }
+
       const data: ApiResponse<T> = await response.json();
       return data;
     } catch (error: any) {

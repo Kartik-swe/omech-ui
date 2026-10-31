@@ -1,14 +1,31 @@
 "use client";
 import Cookies from "js-cookie"; // Import js-cookie
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Form, Input, Button, message, Card } from "antd";
+import { Form, Input, Button, message, Card, Spin } from "antd";
+import DeviceAccessPanel from "../components/DeviceAccessPanel";
+import { DeviceStatusInfo, deviceHeaders, fetchDeviceStatus } from "@/utils/device";
 
 const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 // state for handle Error msg
   const [errMsg, setErrMsg] = useState('');
+
+  // Device registration: only matters outside the allowed office IPs.
+  // null = normal login (allowed IP, approved device, or status check failed).
+  const [deviceGate, setDeviceGate] = useState<DeviceStatusInfo | null>(null);
+  const [checkingDevice, setCheckingDevice] = useState(true);
+
+  const checkDevice = async () => {
+    const st = await fetchDeviceStatus();
+    setDeviceGate(st && !st.IP_ALLOWED && st.DEVICE_STATUS !== "APPROVED" ? st : null);
+    setCheckingDevice(false);
+  };
+
+  useEffect(() => {
+    checkDevice();
+  }, []);
 
 
   const onFinish = async (values: { username: string; password: string }) => {
@@ -19,6 +36,7 @@ const LoginPage = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...deviceHeaders(), // registered phones only
         },
         body: JSON.stringify(values),
       });
@@ -48,12 +66,23 @@ const LoginPage = () => {
     }
   };
 
+  if (checkingDevice || deviceGate) {
+    return (
+      <div
+        className="absolute top-0 left-0 w-full h-full flex justify-center items-center bg-gray-100 px-4"
+        style={{ zIndex: 9999 }}
+      >
+        {checkingDevice ? <Spin size="large" /> : <DeviceAccessPanel status={deviceGate!} onRecheck={checkDevice} />}
+      </div>
+    );
+  }
+
   return (
     <div
-    className="absolute top-0 left-0 w-full h-full flex justify-center items-center bg-gray-100"
+    className="absolute top-0 left-0 w-full h-full flex justify-center items-center bg-gray-100 px-4"
     style={{ zIndex: 9999 }}
   >
-      <Card title="Login" className="w-96 shadow-lg rounded-lg">
+      <Card title="Login" className="w-full max-w-sm shadow-lg rounded-lg">
         <Form layout="vertical" onFinish={onFinish}>
           <Form.Item
             label="Username"

@@ -275,6 +275,11 @@ const menuItems = [
         link: '/master/users',
       },
       {
+        key: 'devices',
+        label: 'Devices',
+        link: '/master/devices',
+      },
+      {
         key: 'Company Profile',
         label: 'Company Profile',
         link: '/master/company',
