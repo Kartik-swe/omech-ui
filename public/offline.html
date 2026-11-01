@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline - Omech Inventory</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#f5f5f5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#171717}
+  .card{background:#fff;border-radius:8px;padding:32px 24px;max-width:360px;margin:16px;text-align:center;
+        box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  img{width:72px;height:72px}
+  h1{font-size:20px;margin:16px 0 8px}
+  p{color:#666;line-height:1.5;margin:0 0 20px}
+  button{background:#1677ff;color:#fff;border:0;border-radius:6px;padding:10px 20px;font-size:15px}
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icons/icon-192.png" alt="Omech">
+    <h1>You are offline</h1>
+    <p>Omech Inventory needs an internet connection. Check your network and try again.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>
