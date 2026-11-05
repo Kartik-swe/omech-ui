@@ -93,6 +93,11 @@ const menuItems = [
         label: 'Shift Material',
         link: '/materials/dash1',
       },
+      {
+        key: 'NON_MOVING_STOCK',
+        label: 'Non-Moving Stock',
+        link: '/materials/non-moving',
+      },
        {
         key: 'PRODUCTION_ANALYSIS',
         label: 'Production Analysis',
