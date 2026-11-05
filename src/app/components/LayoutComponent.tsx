@@ -11,7 +11,9 @@ import {
   Badge, 
   Button, 
   Space, 
-  Typography 
+  Typography,
+  Grid,
+  Drawer
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType, MenuDividerType } from 'antd/es/menu/interface';
@@ -328,6 +330,17 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const [collapsed, setCollapsed] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>(['dashboard']);
   const pathname = usePathname();
+
+  // Mobile: below the "md" breakpoint (768px) the side menu becomes a slide-in
+  // drawer and spacing is reduced. The desktop layout is unchanged.
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.md === false;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // close the mobile menu after navigating
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
   
   // Find active menu item based on current path
   useEffect(() => {
@@ -378,30 +391,13 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
       },
     },
   ];
-   const isPrintRoute = pathname?.includes('/print');
-  if (isPrintRoute) {
-    return <>{children}</>;
-  }
-
-  return (
-    <Layout className="app-layout" style={{ minHeight: '100vh' }}>
-      <Sider 
-        collapsible 
-        collapsed={collapsed} 
-        onCollapse={(value) => setCollapsed(value)}
-        style={{
-          boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
-          zIndex: 10,
-        }}
-        width={250}
-        theme="light"
-      >
+  const renderLogo = (isCollapsed: boolean) => (
         <div className="logo" style={{ 
           height: '64px', 
           display: 'flex', 
           alignItems: 'center', 
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '0' : '0 24px',
+          justifyContent: isCollapsed ? 'center' : 'flex-start',
+          padding: isCollapsed ? '0' : '0 24px',
           borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
           overflow: 'hidden',
         }}>
@@ -413,7 +409,7 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
             alignItems: 'center',
             gap: '10px'
           }}>
-            {collapsed ? (
+            {isCollapsed ? (
               <img 
                 src="/Omech_Components_Logo.png" 
                 alt="Omech Logo"
@@ -431,12 +427,15 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
             )}
           </div>
         </div>
-        
+  );
+
+  const renderMenu = () => (
         <Menu 
           theme="light" 
           mode="inline" 
           selectedKeys={selectedKeys}
           style={{ borderRight: 0 }}
+          onClick={() => { if (isMobile) setDrawerOpen(false); }}
           items={menuItems.map(item => {
             if (item.subMenu) {
               return {
@@ -456,7 +455,43 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
             };
           })}
         />
+  );
+
+   const isPrintRoute = pathname?.includes('/print');
+  if (isPrintRoute) {
+    return <>{children}</>;
+  }
+
+  return (
+    <Layout className="app-layout" style={{ minHeight: '100vh' }}>
+      {isMobile ? (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={260}
+          closable={false}
+          styles={{ body: { padding: 0 } }}
+        >
+          {renderLogo(false)}
+          {renderMenu()}
+        </Drawer>
+      ) : (
+      <Sider 
+        collapsible 
+        collapsed={collapsed} 
+        onCollapse={(value) => setCollapsed(value)}
+        style={{
+          boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
+          zIndex: 10,
+        }}
+        width={250}
+        theme="light"
+      >
+        {renderLogo(collapsed)}
+        {renderMenu()}
       </Sider>
+      )}
 
       <Layout>
         <Header style={{ 
@@ -472,11 +507,11 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <Button 
               type="text" 
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 
-              onClick={() => setCollapsed(!collapsed)}
+              icon={isMobile || collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} 
+              onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed))}
               style={{ fontSize: '16px', marginRight: '12px' }}
             />
-            <Breadcrumb 
+            {!isMobile && <Breadcrumb 
               style={{ margin: 0 }}
               items={pathname.split('/').filter(Boolean).map((path, index, array) => {
                 const url = `/${array.slice(0, index + 1).join('/')}`;
@@ -485,32 +520,34 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   title: <Link href={url}>{path.charAt(0).toUpperCase() + path.slice(1).replace(/-/g, ' ')}</Link>
                 };
               })}
-            />
+            />}
           </div>
           
           <Space size={16}>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar style={{ backgroundColor: colorPrimary }} icon={<UserOutlined />} />
+                {!isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                   <Text strong>Admin User</Text>
                   <Text type="secondary" style={{ fontSize: '12px' }}>Administrator</Text>
                 </div>
+                )}
               </Space>
             </Dropdown>
           </Space>
         </Header>
 
-        <Content style={{ padding: '24px', overflow: 'auto' }}>
+        <Content style={{ padding: isMobile ? '8px' : '24px', overflow: 'auto' }}>
           <div
             style={{
               background: colorBgContainer,
               minHeight: 280,
-              padding: 24,
+              padding: isMobile ? 8 : 24,
               borderRadius: borderRadiusLG,
               boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-              height: 'calc(100vh - 184px)', /* 64px header + 56px footer + 24px*2 padding */
-              overflowY: 'auto',
+              height: isMobile ? 'auto' : 'calc(100vh - 184px)', /* 64px header + 56px footer + 24px*2 padding */
+              overflowY: isMobile ? 'visible' : 'auto',
             }}
           >
             {children}
@@ -519,10 +556,10 @@ const LayoutComponent: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         <Footer style={{ 
           textAlign: 'center', 
-          padding: '16px 50px',
+          padding: isMobile ? '8px 12px' : '16px 50px',
           backgroundColor: colorBgElevated,
           color: 'rgba(0, 0, 0, 0.45)',
-          fontSize: '14px',
+          fontSize: isMobile ? '12px' : '14px',
         }}>
           OMECH INVENTORY System ©{new Date().getFullYear()} All Rights Reserved
         </Footer>

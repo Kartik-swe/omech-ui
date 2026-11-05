@@ -1,9 +1,29 @@
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 // import { Inter, Roboto, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
 import LayoutComponent from './components/LayoutComponent';
 import { AuthProvider } from "./context/auth";
+import PwaRegister from "./components/PwaRegister";
+
+// PWA: installable app ("Add to Home screen" / "Install app")
+export const metadata: Metadata = {
+  title: "Omech Inventory",
+  applicationName: "Omech Inventory",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/favicon.ico" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  appleWebApp: { capable: true, title: "Omech", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#1677ff",
+};
 
 // Local fonts
 const geistSans = localFont({
@@ -48,6 +68,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+         <PwaRegister />
          <AuthProvider> {/* Add the AuthProvider here */}
         <LayoutComponent>
           {children}

@@ -401,3 +401,57 @@ code, pre, .ant-typography code, .ant-typography pre {
 .table-blue .ant-table-tbody > tr:hover > td {
   background-color: rgba(33, 150, 243, 0.1) !important;
 }
+/* =====================================================================
+   Mobile / PWA (2026-11-01)
+   Layout-only rules for phones. Nothing here changes how a screen works;
+   desktop (>= 768px) is not affected.
+   ===================================================================== */
+@media (max-width: 767px) {
+  /* page wrappers: less padding so content gets the width */
+  .p-6 { padding: 8px !important; }
+  .ant-card .ant-card-body { padding: 12px; }
+  .ant-card .ant-card-head { padding: 0 12px; min-height: 44px; }
+
+  /* wide tables scroll sideways instead of being cut off */
+  .ant-table { overflow: visible; }
+  .ant-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ant-table-thead > tr > th, .ant-table-tbody > tr > td { white-space: nowrap; }
+
+  /* modals fit the screen */
+  .ant-modal { max-width: calc(100vw - 16px) !important; margin: 8px auto; top: 8px; padding-bottom: 8px; }
+  .ant-modal .ant-modal-content { padding: 16px 12px; }
+
+  /* date range picker: months stacked instead of side by side */
+  .ant-picker-dropdown .ant-picker-panels { flex-direction: column; }
+  .ant-picker-range { width: 100% !important; }
+
+  /* iPhone: 16px inputs stop the page zooming in when a field is tapped */
+  .ant-input, .ant-input-number-input, .ant-select-selection-search-input,
+  .ant-select-selector, .ant-picker-input > input, textarea.ant-input { font-size: 16px !important; }
+
+  /* tab bars scroll instead of squeezing */
+  .ant-tabs-nav { margin-bottom: 8px !important; }
+
+  /* statistics a little smaller */
+  .ant-statistic-content { font-size: 20px; }
+
+  /* no hover "lift" on touch screens */
+  .ant-btn-primary:hover, .ant-btn-default:hover, .dashboard-stat-card:hover { transform: none; }
+}
+
+/* Phones (< 576px): grid columns without their own mobile size stack full width,
+   so filter rows / forms become one field per line. Columns that already set
+   an xs/sm size keep it. */
+@media (max-width: 575px) {
+  .ant-row > .ant-col[class*="ant-col-"]:not([class*="ant-col-xs-"]):not([class*="ant-col-sm-"]) {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+  .ant-row > .ant-col .ant-select:not(.ant-select-sm),
+  .ant-row > .ant-col .ant-picker { min-width: 0; }
+}
+
+/* Installed app (PWA): respect the phone's notch / home bar */
+@media (display-mode: standalone) {
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+}
